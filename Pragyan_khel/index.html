@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartFocus AI — Intelligent Subject Tracking</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.all.min.js"></script>
+    <style>
+        /* ============================================================
+           DESIGN SYSTEM — Premium Dark Glass Theme
+           ============================================================ */
+        :root {
+            --bg-primary: #07070d;
+            --bg-secondary: #0c0c16;
+            --bg-elevated: #111120;
+            --bg-glass: rgba(17, 17, 32, 0.72);
+            --bg-glass-hover: rgba(28, 28, 50, 0.8);
+            --surface: #16162a;
+            --surface-hover: #1e1e38;
+
+            --text-primary: #f0f0f8;
+            --text-secondary: #8888a8;
+            --text-muted: #555570;
+
+            --accent: #7c6cf0;
+            --accent-light: #a89cf8;
+            --accent-glow: rgba(124, 108, 240, 0.25);
+            --accent-glow-strong: rgba(124, 108, 240, 0.5);
+
+            --success: #22d97c;
+            --success-dim: rgba(34, 217, 124, 0.15);
+            --warning: #f0c040;
+            --warning-dim: rgba(240, 192, 64, 0.15);
+            --danger: #f04060;
+            --danger-dim: rgba(240, 64, 96, 0.12);
+
+            --border: rgba(255, 255, 255, 0.06);
+            --border-accent: rgba(124, 108, 240, 0.3);
+            --radius-sm: 8px;
+            --radius-md: 14px;
+            --radius-lg: 20px;
+            --radius-xl: 28px;
+
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.3);
+            --shadow-md: 0 8px 32px rgba(0,0,0,0.4);
+            --shadow-lg: 0 16px 64px rgba(0,0,0,0.5);
+            --shadow-glow: 0 0 40px var(--accent-glow);
+
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* ---- Reset & Base ---- */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        body {
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Subtle animated gradient mesh behind entire page */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 600px 400px at 20% 10%, rgba(124,108,240,0.08), transparent),
+                radial-gradient(ellipse 500px 500px at 80% 80%, rgba(34,217,124,0.04), transparent),
+                radial-gradient(ellipse 400px 300px at 60% 30%, rgba(240,192,64,0.03), transparent);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ============================================================
+           LOADING SCREEN — Cinematic entrance
+           ============================================================ */
+        #loading-screen {
+            position: fixed; inset: 0; z-index: 9999;
+            background: var(--bg-primary);
+            display: flex; align-items: center; justify-content: center; flex-direction: column;
+            transition: opacity 0.6s ease, transform 0.6s ease;
+        }
+        #loading-screen.hidden {
+            opacity: 0; transform: scale(1.02);
+            pointer-events: none;
+        }
+        .loader-brand {
+            display: flex; align-items: center; gap: 14px;
+            margin-bottom: 40px;
+        }
+        .loader-icon {
+            width: 52px; height: 52px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            border-radius: 16px;
+            display: grid; place-items: center;
+            box-shadow: var(--shadow-glow);
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 30px var(--accent-glow); }
+            50% { box-shadow: 0 0 60px var(--accent-glow-strong); }
+        }
+        .loader-icon svg { width: 28px; height: 28px; }
+        .loader-title { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.03em; color: var(--text-primary); }
+        .loader-sub { font-size: 0.8rem; font-weight: 400; color: var(--text-muted); margin-top: 2px; }
+
+        .loader-status {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        #load-msg {
+            font-size: 0.85rem; font-weight: 500;
+            color: var(--text-secondary);
+            min-height: 1.4em;
+        }
+        .loader-progress {
+            width: 280px; height: 3px;
+            background: var(--surface);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        #pfill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent), var(--accent-light));
+            border-radius: 4px;
+            transition: width 0.4s ease;
+            box-shadow: 0 0 12px var(--accent-glow);
+        }
+        .loader-steps {
+            display: flex; gap: 32px;
+            margin-top: 36px;
+        }
+        .lstep {
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
+            opacity: 0.3;
+            transition: opacity 0.4s ease;
+        }
+        .lstep.active { opacity: 1; }
+        .lstep.done { opacity: 0.6; }
+        .lstep-dot {
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            background: var(--surface);
+            border: 2px solid var(--border);
+            display: grid; place-items: center;
+            transition: all 0.4s ease;
+        }
+        .lstep.active .lstep-dot {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+            box-shadow: 0 0 16px var(--accent-glow);
+        }
+        .lstep.done .lstep-dot {
+            border-color: var(--success);
+            background: var(--success-dim);
+        }
+        .lstep-dot svg { width: 14px; height: 14px; opacity: 0.6; }
+        .lstep.active .lstep-dot svg { opacity: 1; }
+        .lstep-label { font-size: 0.68rem; font-weight: 500; color: var(--text-muted); letter-spacing: 0.04em; text-transform: uppercase; }
+        .lstep.active .lstep-label { color: var(--accent-light); }
+
+        /* ============================================================
+           MAIN LAYOUT — App shell
+           ============================================================ */
+        #app {
+            position: relative; z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* ---- Nav / Header ---- */
+        .nav {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 20px 0;
+        }
+        .nav-brand {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .nav-icon {
+            width: 38px; height: 38px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-light));
+            border-radius: 11px;
+            display: grid; place-items: center;
+            box-shadow: var(--shadow-glow);
+        }
+        .nav-icon svg { width: 20px; height: 20px; }
+        .nav-name {
+            font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em;
+        }
+        .nav-tag {
+            font-size: 0.62rem; font-weight: 600;
+            color: var(--accent-light);
+            background: var(--accent-glow);
+            padding: 2px 8px; border-radius: 6px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            margin-left: 8px;
+        }
+        .nav-pills {
+            display: flex; align-items: center; gap: 6px;
+        }
+        .pill {
+            font-size: 0.65rem; font-weight: 600;
+            padding: 4px 10px;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            color: var(--text-muted);
+            background: transparent;
+            letter-spacing: 0.02em;
+        }
+        .pill-live {
+            color: var(--success);
+            border-color: rgba(34,217,124,0.25);
+            background: var(--success-dim);
+            animation: livePulse 2s ease-in-out infinite;
+        }
+        @keyframes livePulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.65; }
+        }
+
+        /* ---- Hero Canvas Area ---- */
+        .hero {
+            position: relative;
+            margin-top: 8px;
+        }
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            border: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+        }
+        .canvas-container canvas,
+        .canvas-container video {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        }
+        #main-canvas { z-index: 2; cursor: crosshair; }
+        #video { display: none; }
+
+        /* Placeholder empty state */
+        .empty-state {
+            position: absolute; inset: 0; z-index: 3;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 20px;
+            background: var(--bg-secondary);
+            transition: opacity 0.5s ease, visibility 0.5s ease;
+        }
+        .empty-state.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+        .empty-icon {
+            width: 80px; height: 80px;
+            border-radius: 24px;
+            background: var(--surface);
+            border: 2px dashed rgba(255,255,255,0.08);
+            display: grid; place-items: center;
+        }
+        .empty-icon svg { width: 32px; height: 32px; color: var(--text-muted); opacity: 0.5; }
+        .empty-title { font-size: 1rem; font-weight: 600; color: var(--text-secondary); }
+        .empty-sub { font-size: 0.78rem; color: var(--text-muted); max-width: 300px; text-align: center; line-height: 1.5; }
+        .empty-actions { display: flex; gap: 10px; margin-top: 4px; }
+
+        /* Floating hint toast */
+        .hint-toast {
+            position: absolute;
+            top: 16px; left: 50%; transform: translateX(-50%);
+            z-index: 20;
+            display: none;
+        }
+        .hint-toast.show { display: block; animation: slideDown 0.5s ease; }
+        @keyframes slideDown { from { opacity:0; transform: translateX(-50%) translateY(-12px); } to { opacity:1; transform: translateX(-50%) translateY(0); } }
+        .hint-toast-inner {
+            display: flex; align-items: center; gap: 8px;
+            padding: 9px 18px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-accent);
+            border-radius: 40px;
+            font-size: 0.76rem; font-weight: 600;
+            color: var(--accent-light);
+            box-shadow: var(--shadow-glow);
+        }
+        .hint-toast-inner svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+        /* Floating FPS badge (top-right on canvas) */
+        .fps-badge {
+            position: absolute; top: 14px; right: 14px; z-index: 20;
+            display: none;
+            padding: 5px 12px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 0.7rem; font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: var(--success);
+            letter-spacing: 0.03em;
+        }
+        .fps-badge.show { display: flex; align-items: center; gap: 5px; }
+        .fps-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        /* Floating target lock indicator (bottom-left on canvas) */
+        .target-badge {
+            position: absolute; bottom: 14px; left: 14px; z-index: 20;
+            display: none;
+            padding: 7px 16px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--border-accent);
+            border-radius: 12px;
+            font-size: 0.75rem; font-weight: 600;
+            color: var(--text-primary);
+            box-shadow: var(--shadow-glow);
+        }
+        .target-badge.show { display: flex; align-items: center; gap: 8px; }
+        .target-lock-icon {
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            background: var(--accent-glow);
+            border: 1.5px solid var(--accent);
+            display: grid; place-items: center;
+        }
+        .target-lock-icon svg { width: 10px; height: 10px; color: var(--accent-light); }
+        .target-name { color: var(--accent-light); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+        .target-conf { color: var(--text-muted); font-size: 0.68rem; margin-left: 4px; }
+
+        /* ---- Toolbar (below canvas) ---- */
+        .toolbar {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 0;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+        .toolbar-group {
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex; align-items: center; gap: 7px;
+            padding: 9px 18px;
+            border: none; border-radius: var(--radius-sm);
+            font-family: var(--font);
+            font-size: 0.8rem; font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition);
+            position: relative;
+            overflow: hidden;
+        }
+        .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+        .btn::after {
+            content: '';
+            position: absolute; inset: 0;
+            background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 100%);
+            pointer-events: none;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #6a5ad8);
+            color: #fff;
+            box-shadow: 0 4px 16px var(--accent-glow);
+        }
+        .btn-primary:hover {
+            box-shadow: 0 6px 24px var(--accent-glow-strong);
+            transform: translateY(-1px);
+        }
+        .btn-secondary {
+            background: var(--surface);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover {
+            background: var(--surface-hover);
+            border-color: rgba(255,255,255,0.12);
+        }
+        .btn-ghost {
+            background: transparent;
+            color: var(--text-muted);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+        }
+        .btn-ghost:hover { border-color: var(--danger); color: var(--danger); }
+        .btn-ghost:disabled { opacity: 0.3; cursor: not-allowed; }
+        .btn-ghost:disabled:hover { border-color: var(--border); color: var(--text-muted); }
+
+        /* Slider Control */
+        .slider-control {
+            display: flex; align-items: center; gap: 10px;
+            padding: 6px 14px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+        .slider-label {
+            font-size: 0.72rem; font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .slider-val {
+            font-size: 0.72rem; font-weight: 700;
+            color: var(--accent-light);
+            font-variant-numeric: tabular-nums;
+            min-width: 30px;
+            text-align: right;
+        }
+        input[type=range] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 90px; height: 4px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            outline: none;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px; height: 16px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--accent-glow);
+            transition: transform 0.15s ease;
+        }
+        input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+
+        /* ---- Info Panels ---- */
+        .panels {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 14px;
+            margin-top: 4px;
+            padding-bottom: 40px;
+        }
+        .panel {
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            padding: 18px;
+            transition: border-color var(--transition);
+        }
+        .panel:hover { border-color: rgba(255,255,255,0.1); }
+        .panel-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 16px;
+        }
+        .panel-title {
+            font-size: 0.72rem; font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+        }
+        .panel-icon {
+            width: 28px; height: 28px;
+            border-radius: 8px;
+            display: grid; place-items: center;
+        }
+        .panel-icon svg { width: 14px; height: 14px; }
+        .pi-purple { background: var(--accent-glow); color: var(--accent-light); }
+        .pi-green { background: var(--success-dim); color: var(--success); }
+        .pi-yellow { background: var(--warning-dim); color: var(--warning); }
+
+        .metric {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+        }
+        .metric:last-child { border-bottom: none; }
+        .metric-label {
+            font-size: 0.75rem; font-weight: 500;
+            color: var(--text-muted);
+        }
+        .metric-value {
+            font-size: 0.78rem; font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+        .metric-value.idle { color: var(--text-muted); }
+        .metric-value.detecting { color: var(--warning); }
+        .metric-value.tracking { color: var(--success); }
+        .metric-value.lost { color: var(--danger); }
+
+        /* Confidence meter */
+        .conf-meter {
+            display: flex; align-items: center; gap: 8px;
+        }
+        .conf-bar {
+            flex: 1; height: 4px; max-width: 70px;
+            background: var(--bg-primary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .conf-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), var(--success));
+            border-radius: 4px;
+            transition: width 0.3s ease;
+        }
+
+        /* Objects panel */
+        .obj-grid {
+            display: flex; flex-wrap: wrap; gap: 6px;
+            max-height: 140px;
+            overflow-y: auto;
+        }
+        .obj-grid::-webkit-scrollbar { width: 4px; }
+        .obj-grid::-webkit-scrollbar-track { background: transparent; }
+        .obj-grid::-webkit-scrollbar-thumb { background: var(--surface-hover); border-radius: 4px; }
+
+        .obj-chip {
+            display: inline-flex; align-items: center; gap: 6px;
+            padding: 6px 12px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.72rem; font-weight: 600;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+        .obj-chip:hover {
+            background: var(--surface-hover);
+            border-color: rgba(255,255,255,0.12);
+            color: var(--text-primary);
+        }
+        .obj-chip.active {
+            background: var(--accent-glow);
+            border-color: var(--accent);
+            color: var(--accent-light);
+            box-shadow: 0 0 12px var(--accent-glow);
+        }
+        .obj-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: background 0.2s ease;
+        }
+        .obj-chip.active .obj-dot {
+            background: var(--success);
+            box-shadow: 0 0 6px var(--success);
+        }
+        .obj-score {
+            color: var(--text-muted);
+            font-weight: 500;
+            font-size: 0.65rem;
+        }
+        .obj-chip.active .obj-score { color: var(--accent-light); opacity: 0.7; }
+
+        .empty-obj {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            padding: 12px 0;
+        }
+
+        /* Pipeline panel */
+        .pipeline-stage {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 0;
+        }
+        .stage-icon {
+            width: 28px; height: 28px; flex-shrink: 0;
+            border-radius: 8px;
+            display: grid; place-items: center;
+            font-size: 0.65rem; font-weight: 800;
+            color: var(--text-muted);
+            background: var(--surface);
+            border: 1px solid var(--border);
+        }
+        .stage-icon.on { border-color: var(--accent); color: var(--accent-light); background: var(--accent-glow); }
+        .stage-info { flex: 1; }
+        .stage-name { font-size: 0.73rem; font-weight: 600; color: var(--text-secondary); }
+        .stage-desc { font-size: 0.62rem; color: var(--text-muted); margin-top: 1px; }
+        .stage-arrow { color: var(--text-muted); font-size: 0.6rem; margin: 2px 0 2px 13px; }
+
+        /* Error */
+        #error-bar {
+            display: none;
+            margin-top: 12px;
+            padding: 14px 18px;
+            background: var(--danger-dim);
+            border: 1px solid rgba(240,64,96,0.2);
+            border-radius: var(--radius-md);
+            font-size: 0.82rem;
+            color: #ff8888;
+        }
+
+        /* ---- Responsive ---- */
+        @media(max-width: 900px) {
+            .panels { grid-template-columns: 1fr; }
+            .nav-pills { display: none; }
+        }
+        @media(max-width: 640px) {
+            .toolbar { flex-direction: column; align-items: stretch; }
+            .toolbar-group { justify-content: center; }
+            .empty-actions { flex-direction: column; }
+            .empty-actions .btn { justify-content: center; }
+        }
+
+        /* Hidden utility */
+        [hidden] { display: none !important; }
+        input[type="file"] { display: none; }
+    </style>
+</head>
+<body>
+
+    <!-- ============================================================
+         LOADING SCREEN
+         ============================================================ -->
+    <div id="loading-screen">
+        <div class="loader-brand">
+            <div class="loader-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                </svg>
+            </div>
+            <div>
+                <div class="loader-title">SmartFocus AI</div>
+                <div class="loader-sub">Initializing neural engine...</div>
+            </div>
+        </div>
+        <div class="loader-status">
+            <div id="load-msg">Configuring ONNX Runtime...</div>
+        </div>
+        <div class="loader-progress">
+            <div id="pfill"></div>
+        </div>
+        <div class="loader-steps">
+            <div class="lstep active" id="ls-runtime">
+                <div class="lstep-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="4"/></svg></div>
+                <div class="lstep-label">Runtime</div>
+            </div>
+            <div class="lstep" id="ls-model">
+                <div class="lstep-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+                <div class="lstep-label">YOLOv11</div>
+            </div>
+            <div class="lstep" id="ls-ready">
+                <div class="lstep-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div class="lstep-label">Ready</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         MAIN APP
+         ============================================================ -->
+    <div id="app">
+        <!-- Nav -->
+        <nav class="nav">
+            <div class="nav-brand">
+                <div class="nav-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                    </svg>
+                </div>
+                <span class="nav-name">SmartFocus</span>
+                <span class="nav-tag">AI</span>
+            </div>
+            <div class="nav-pills">
+                <span class="pill">YOLOv11</span>
+                <span class="pill">ByteTrack</span>
+                <span class="pill">WebGL</span>
+                <span class="pill">ONNX</span>
+                <span class="pill pill-live" id="pill-live" style="display:none">LIVE</span>
+            </div>
+        </nav>
+
+        <div id="error-bar"></div>
+
+        <!-- Hero: Canvas -->
+        <div class="hero">
+            <div class="canvas-container" id="canvas-wrap">
+                <canvas id="main-canvas"></canvas>
+                <video id="video" playsinline muted></video>
+
+                <!-- Empty state -->
+                <div class="empty-state" id="placeholder">
+                    <div class="empty-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <rect x="2" y="3" width="20" height="14" rx="2"/>
+                            <polygon points="10 8 16 11 10 14 10 8"/>
+                            <line x1="2" y1="20" x2="22" y2="20" stroke-width="1.5" opacity="0.4"/>
+                        </svg>
+                    </div>
+                    <div class="empty-title">No video source</div>
+                    <div class="empty-sub">Upload a video file or start your webcam to begin real-time AI object detection and tracking</div>
+                    <div class="empty-actions">
+                        <button class="btn btn-primary" onclick="document.getElementById('finput').click()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            Upload Video
+                        </button>
+                        <button class="btn btn-secondary" id="btn-cam-empty">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                            Start Webcam
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Hint toast -->
+                <div class="hint-toast" id="hint">
+                    <div class="hint-toast-inner">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 12l2 2 4-4"/></svg>
+                        Click on any detected object to lock focus
+                    </div>
+                </div>
+
+                <!-- FPS badge -->
+                <div class="fps-badge" id="fps-badge">
+                    <span class="fps-dot"></span>
+                    <span id="st-fps">0</span> FPS
+                </div>
+
+                <!-- Target lock badge -->
+                <div class="target-badge" id="target-badge">
+                    <div class="target-lock-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/></svg>
+                    </div>
+                    <span class="target-name" id="target-name">—</span>
+                    <span class="target-conf" id="target-conf"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <div class="toolbar-group">
+                <button class="btn btn-primary" id="btn-upload" onclick="document.getElementById('finput').click()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Upload
+                </button>
+                <input type="file" id="finput" accept="video/*">
+                <button class="btn btn-secondary" id="btn-cam">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg>
+                    Webcam
+                </button>
+                <button class="btn btn-ghost" id="btn-clear" disabled>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    Clear Focus
+                </button>
+            </div>
+            <div class="toolbar-group">
+                <div class="slider-control">
+                    <span class="slider-label">Blur</span>
+                    <input type="range" id="blur-r" min="2" max="30" value="14">
+                    <span class="slider-val" id="blur-v">14</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Panels -->
+        <div class="panels">
+            <!-- Status Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Tracking Status</span>
+                    <div class="panel-icon pi-purple">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    </div>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">State</span>
+                    <span class="metric-value idle" id="st-text">Idle</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Focused On</span>
+                    <span class="metric-value" id="st-focus" style="color:var(--text-muted)">None</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Objects</span>
+                    <span class="metric-value" id="st-count" style="font-variant-numeric:tabular-nums">0</span>
+                </div>
+                <div class="metric">
+                    <span class="metric-label">Confidence</span>
+                    <div class="conf-meter">
+                        <div class="conf-bar"><div class="conf-fill" id="st-conf-bar" style="width:0%"></div></div>
+                        <span class="metric-value" id="st-conf" style="font-size:0.7rem;min-width:30px;text-align:right">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detected Objects Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">Detected Objects</span>
+                    <div class="panel-icon pi-green">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="3"/></svg>
+                    </div>
+                </div>
+                <div class="obj-grid" id="obj-list">
+                    <div class="empty-obj">No objects detected yet</div>
+                </div>
+            </div>
+
+            <!-- Pipeline Panel -->
+            <div class="panel">
+                <div class="panel-header">
+                    <span class="panel-title">AI Pipeline</span>
+                    <div class="panel-icon pi-yellow">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    </div>
+                </div>
+                <div class="pipeline-stage">
+                    <div class="stage-icon on" id="pipe-yolo">Y</div>
+                    <div class="stage-info">
+                        <div class="stage-name">YOLOv11-nano</div>
+                        <div class="stage-desc">Object detection (every 3rd frame)</div>
+                    </div>
+                </div>
+                <div class="stage-arrow">|</div>
+                <div class="pipeline-stage">
+                    <div class="stage-icon" id="pipe-bt">B</div>
+                    <div class="stage-info">
+                        <div class="stage-name">ByteTrack</div>
+                        <div class="stage-desc">Multi-object tracking + persistent IDs</div>
+                    </div>
+                </div>
+                <div class="stage-arrow">|</div>
+                <div class="pipeline-stage">
+                    <div class="stage-icon" id="pipe-gl">G</div>
+                    <div class="stage-info">
+                        <div class="stage-name">WebGL Shader</div>
+                        <div class="stage-desc">Gaussian blur compositing @ 60fps</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         ENGINE JS — All AI logic preserved exactly
+         ============================================================ -->
+    <script>
+    const CLASSES=["person","bicycle","car","motorcycle","airplane","bus","train","truck","boat","traffic light","fire hydrant","stop sign","parking meter","bench","bird","cat","dog","horse","sheep","cow","elephant","bear","zebra","giraffe","backpack","umbrella","handbag","tie","suitcase","frisbee","skis","snowboard","sports ball","kite","baseball bat","baseball glove","skateboard","surfboard","tennis racket","bottle","wine glass","cup","fork","knife","spoon","bowl","banana","apple","sandwich","orange","broccoli","carrot","hot dog","pizza","donut","cake","chair","couch","potted plant","bed","dining table","toilet","tv","laptop","mouse","remote","keyboard","cell phone","microwave","oven","toaster","sink","refrigerator","book","clock","vase","scissors","teddy bear","hair drier","toothbrush"];
+
+    // ================================================================
+    // BYTETRACK
+    // ================================================================
+    class ByteTrack {
+        constructor() { this.tracks=[]; this.nextId=1; }
+        update(dets) {
+            for (const t of this.tracks) {
+                t.bbox = [t.bbox[0]+t.vx, t.bbox[1]+t.vy, t.bbox[2], t.bbox[3]];
+                t.age++; t.lost++;
+            }
+            const active = this.tracks.filter(t=>t.lost<2);
+            const lost = this.tracks.filter(t=>t.lost>=2);
+            const hi = dets.filter(d=>d.score>=0.4);
+            const [m1, uT1, uD1] = this._match(active, hi, 0.25);
+            for (const [ti,di] of m1) this._upd(active[ti], hi[di]);
+            const lo = dets.filter(d=>d.score>=0.1 && d.score<0.4);
+            const remT = uT1.map(i=>active[i]);
+            const [m2, uT2] = this._match(remT, lo, 0.4);
+            for (const [ti,di] of m2) this._upd(remT[ti], lo[di]);
+            const uHi = uD1.map(i=>hi[i]);
+            const [m3,,uD3] = this._match(lost, uHi, 0.25);
+            for (const [ti,di] of m3) { this._upd(lost[ti], uHi[di]); lost[ti].active=true; }
+            for (const di of uD3) {
+                this.tracks.push({ id:this.nextId++, bbox:[...uHi[di].bbox], score:uHi[di].score,
+                    cls:uHi[di].cls, clsId:uHi[di].clsId, vx:0, vy:0, age:1, lost:0, active:true });
+            }
+            for (const i of uT2) remT[i].lost++;
+            this.tracks = this.tracks.filter(t=>t.lost<=30);
+            return this.tracks.filter(t=>t.active && t.lost<2);
+        }
+        findAt(x,y) {
+            let best=null, bd=Infinity;
+            for (const t of this.tracks) {
+                if (t.lost>1) continue;
+                const [bx,by,bw,bh]=t.bbox;
+                if (x>=bx&&x<=bx+bw&&y>=by&&y<=by+bh) {
+                    const d=Math.hypot(x-bx-bw/2,y-by-bh/2);
+                    if (d<bd) { bd=d; best=t; }
+                }
+            }
+            if (!best) {
+                for (const t of this.tracks) {
+                    if (t.lost>1) continue;
+                    const d=Math.hypot(x-t.bbox[0]-t.bbox[2]/2, y-t.bbox[1]-t.bbox[3]/2);
+                    if (d<120&&d<bd) { bd=d; best=t; }
+                }
+            }
+            return best;
+        }
+        _upd(track, det) {
+            const ocx=track.bbox[0]+track.bbox[2]/2, ocy=track.bbox[1]+track.bbox[3]/2;
+            const ncx=det.bbox[0]+det.bbox[2]/2, ncy=det.bbox[1]+det.bbox[3]/2;
+            track.vx = .4*(ncx-ocx)+.6*track.vx;
+            track.vy = .4*(ncy-ocy)+.6*track.vy;
+            track.bbox=[...det.bbox]; track.score=det.score;
+            track.cls=det.cls; track.clsId=det.clsId; track.lost=0; track.active=true;
+        }
+        _match(tracks, dets, thresh) {
+            if (!tracks.length||!dets.length) return [[], tracks.map((_,i)=>i), dets.map((_,i)=>i)];
+            const cost = tracks.map(t=>dets.map(d=>1-this._iou(t.bbox,d.bbox)));
+            const pairs=[], usedT=new Set(), usedD=new Set();
+            const flat=[];
+            for (let i=0;i<tracks.length;i++) for (let j=0;j<dets.length;j++) flat.push([1-cost[i][j],i,j]);
+            flat.sort((a,b)=>b[0]-a[0]);
+            for (const [iou,ti,di] of flat) {
+                if (usedT.has(ti)||usedD.has(di)) continue;
+                if (iou>=thresh) { pairs.push([ti,di]); usedT.add(ti); usedD.add(di); }
+            }
+            const uT=[...Array(tracks.length).keys()].filter(i=>!usedT.has(i));
+            const uD=[...Array(dets.length).keys()].filter(i=>!usedD.has(i));
+            return [pairs, uT, uD];
+        }
+        _iou(a,b) {
+            const x1=Math.max(a[0],b[0]), y1=Math.max(a[1],b[1]);
+            const x2=Math.min(a[0]+a[2],b[0]+b[2]), y2=Math.min(a[1]+a[3],b[1]+b[3]);
+            const inter=Math.max(0,x2-x1)*Math.max(0,y2-y1);
+            if (!inter) return 0;
+            return inter/(a[2]*a[3]+b[2]*b[3]-inter);
+        }
+        reset() { this.tracks=[]; this.nextId=1; }
+    }
+
+    // ================================================================
+    // YOLO DETECTOR
+    // ================================================================
+    class YOLODetector {
+        constructor() { this.session=null; this.size=640; }
+        async load(path, onMsg, onStep) {
+            onMsg('Configuring ONNX Runtime...');
+            ort.env.wasm.numThreads = 1;
+            onStep('runtime');
+
+            onMsg('Downloading YOLOv11-nano model...');
+            onStep('model');
+            const resp = await fetch(path);
+            if (!resp.ok) throw new Error('Model not found at '+path);
+            const buf = await resp.arrayBuffer();
+            onMsg(`Model downloaded (${(buf.byteLength/1024/1024).toFixed(1)} MB) — Loading into WASM...`);
+
+            this.session = await ort.InferenceSession.create(buf, {
+                executionProviders: ['wasm'],
+                graphOptimizationLevel: 'all'
+            });
+            onMsg('Neural engine ready');
+            onStep('ready');
+            console.log('[YOLO] Loaded. Inputs:', this.session.inputNames, 'Outputs:', this.session.outputNames);
+        }
+        async detect(video) {
+            if (!this.session) return [];
+            const S=this.size, vw=video.videoWidth, vh=video.videoHeight;
+            const r=Math.min(S/vw,S/vh), nw=Math.round(vw*r), nh=Math.round(vh*r);
+            const px=(S-nw)/2, py=(S-nh)/2;
+            const c=document.createElement('canvas'); c.width=S; c.height=S;
+            const cx=c.getContext('2d');
+            cx.fillStyle='#808080'; cx.fillRect(0,0,S,S);
+            cx.drawImage(video, px, py, nw, nh);
+            const img=cx.getImageData(0,0,S,S).data;
+            const n=S*S, t=new Float32Array(3*n);
+            for (let i=0;i<n;i++) { const j=i*4; t[i]=img[j]/255; t[n+i]=img[j+1]/255; t[2*n+i]=img[j+2]/255; }
+            const input = new ort.Tensor('float32', t, [1,3,S,S]);
+            const feeds = {}; feeds[this.session.inputNames[0]] = input;
+            const res = await this.session.run(feeds);
+            const out = res[this.session.outputNames[0]];
+            return this._parse(out, r, px, py, vw, vh);
+        }
+        _parse(out, scale, px, py, srcW, srcH) {
+            const d=out.data, s=out.dims, dets=[];
+            if (s.length===3 && s[1]===84) {
+                const N=s[2];
+                for (let i=0;i<N;i++) {
+                    let ms=0, mc=0;
+                    for (let c=4;c<84;c++) { const v=d[c*N+i]; if(v>ms){ms=v;mc=c-4;} }
+                    if (ms<0.35) continue;
+                    const cx_=d[i],cy_=d[N+i],w_=d[2*N+i],h_=d[3*N+i];
+                    const x=(cx_-w_/2-px)/scale, y=(cy_-h_/2-py)/scale, w=w_/scale, h=h_/scale;
+                    const fx=Math.max(0,x), fy=Math.max(0,y);
+                    dets.push({bbox:[fx,fy,Math.min(w,srcW-fx),Math.min(h,srcH-fy)], score:ms, clsId:mc, cls:CLASSES[mc]||'obj'});
+                }
+            } else if (s.length===3 && s[2]>=84) {
+                const N=s[1], C=s[2];
+                for (let i=0;i<N;i++) {
+                    const off=i*C; let ms=0,mc=0;
+                    for (let c=4;c<Math.min(C,84);c++) { const v=d[off+c]; if(v>ms){ms=v;mc=c-4;} }
+                    if (ms<0.35) continue;
+                    const cx_=d[off],cy_=d[off+1],w_=d[off+2],h_=d[off+3];
+                    const x=(cx_-w_/2-px)/scale, y=(cy_-h_/2-py)/scale, w=w_/scale, h=h_/scale;
+                    const fx=Math.max(0,x), fy=Math.max(0,y);
+                    dets.push({bbox:[fx,fy,Math.min(w,srcW-fx),Math.min(h,srcH-fy)], score:ms, clsId:mc, cls:CLASSES[mc]||'obj'});
+                }
+            }
+            return this._nms(dets, 0.45);
+        }
+        _nms(dets, thresh) {
+            dets.sort((a,b)=>b.score-a.score);
+            const keep=[];
+            while (dets.length) {
+                const best=dets.shift(); keep.push(best);
+                dets=dets.filter(d=> d.clsId!==best.clsId || this._iou(best.bbox,d.bbox)<thresh);
+            }
+            return keep;
+        }
+        _iou(a,b) {
+            const x1=Math.max(a[0],b[0]),y1=Math.max(a[1],b[1]),x2=Math.min(a[0]+a[2],b[0]+b[2]),y2=Math.min(a[1]+a[3],b[1]+b[3]);
+            const i=Math.max(0,x2-x1)*Math.max(0,y2-y1); return i?(i/(a[2]*a[3]+b[2]*b[3]-i)):0;
+        }
+    }
+
+    // ================================================================
+    // WEBGL BLUR RENDERER
+    // ================================================================
+    class BlurRenderer {
+        constructor(canvas) {
+            this.canvas = canvas;
+            this.gl = canvas.getContext('webgl', {premultipliedAlpha:false});
+            if (!this.gl) { console.error('No WebGL'); return; }
+            this.blur = 14; this.edge = 0.35;
+            this._init();
+        }
+        _init() {
+            const gl=this.gl;
+            const vs=`attribute vec2 a_pos; attribute vec2 a_uv; varying vec2 v_uv;
+                void main(){gl_Position=vec4(a_pos,0,1);v_uv=a_uv;}`;
+            const fsBlur=`precision highp float; varying vec2 v_uv;
+                uniform sampler2D u_vid; uniform sampler2D u_mask;
+                uniform vec2 u_res; uniform float u_blur; uniform float u_edge;
+                float gauss(float x,float s){return exp(-(x*x)/(2.*s*s));}
+                void main(){
+                    vec2 ts=1./u_res; float m=texture2D(u_mask,v_uv).r;
+                    if(m>.95){gl_FragColor=texture2D(u_vid,v_uv);return;}
+                    float sig=max(u_blur*.5,1.); vec3 sum=vec3(0.); float wt=0.;
+                    float fstep=max(1.,ceil(u_blur/6.));
+                    for(int y=-6;y<=6;y++) for(int x=-6;x<=6;x++){
+                        vec2 o=vec2(float(x)*fstep,float(y)*fstep)*ts;
+                        float w=gauss(length(vec2(float(x)*fstep,float(y)*fstep)),sig);
+                        sum+=texture2D(u_vid,v_uv+o).rgb*w; wt+=w;
+                    }
+                    vec3 blr=sum/max(wt,0.001); vec3 shp=texture2D(u_vid,v_uv).rgb;
+                    float a=smoothstep(0.,u_edge,m);
+                    vec3 c=mix(blr,shp,a)*(1.-(1.-m)*.12);
+                    gl_FragColor=vec4(c,1.);
+                }`;
+            const fsPass=`precision highp float; varying vec2 v_uv;
+                uniform sampler2D u_vid;
+                void main(){gl_FragColor=texture2D(u_vid,v_uv);}`;
+            this.progBlur = this._prog(vs, fsBlur);
+            this.progPass = this._prog(vs, fsPass);
+            this.uBlur = {vid:gl.getUniformLocation(this.progBlur,'u_vid'), mask:gl.getUniformLocation(this.progBlur,'u_mask'),
+                res:gl.getUniformLocation(this.progBlur,'u_res'), blur:gl.getUniformLocation(this.progBlur,'u_blur'), edge:gl.getUniformLocation(this.progBlur,'u_edge')};
+            this.uPass = {vid:gl.getUniformLocation(this.progPass,'u_vid')};
+            const pos=new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]);
+            const uv=new Float32Array([0,1,1,1,0,0,0,0,1,1,1,0]);
+            this.posBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.posBuf); gl.bufferData(gl.ARRAY_BUFFER,pos,gl.STATIC_DRAW);
+            this.uvBuf=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,this.uvBuf); gl.bufferData(gl.ARRAY_BUFFER,uv,gl.STATIC_DRAW);
+            this.vidTex=this._tex(); this.maskTex=this._tex();
+        }
+        render(video, maskData, maskW, maskH) {
+            const gl=this.gl; if(!gl) return;
+            const w=video.videoWidth, h=video.videoHeight;
+            if(this.canvas.width!==w||this.canvas.height!==h){this.canvas.width=w;this.canvas.height=h;}
+            gl.viewport(0,0,w,h);
+            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,this.vidTex);
+            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,video);
+            if (maskData) {
+                gl.useProgram(this.progBlur);
+                gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,this.maskTex);
+                gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,maskW,maskH,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,maskData);
+                gl.uniform1i(this.uBlur.vid,0); gl.uniform1i(this.uBlur.mask,1);
+                gl.uniform2f(this.uBlur.res,w,h); gl.uniform1f(this.uBlur.blur,this.blur); gl.uniform1f(this.uBlur.edge,this.edge);
+                this._quad(this.progBlur);
+            } else {
+                gl.useProgram(this.progPass);
+                gl.uniform1i(this.uPass.vid,0);
+                this._quad(this.progPass);
+            }
+        }
+        genMask(bbox, w, h) {
+            const mask=new Uint8Array(w*h);
+            const [bx,by,bw,bh]=bbox, pad=Math.max(bw,bh)*.15;
+            const cx_=bx+bw/2, cy_=by+bh/2, rx=bw/2+pad, ry=bh/2+pad;
+            for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
+                const dx=(x-cx_)/rx, dy=(y-cy_)/ry;
+                mask[y*w+x]=Math.round(Math.max(0,Math.min(1,1.5-Math.sqrt(dx*dx+dy*dy)))*255);
+            }
+            return mask;
+        }
+        _quad(prog) {
+            const gl=this.gl;
+            const pL=gl.getAttribLocation(prog,'a_pos'), uL=gl.getAttribLocation(prog,'a_uv');
+            gl.bindBuffer(gl.ARRAY_BUFFER,this.posBuf); gl.enableVertexAttribArray(pL); gl.vertexAttribPointer(pL,2,gl.FLOAT,false,0,0);
+            gl.bindBuffer(gl.ARRAY_BUFFER,this.uvBuf); gl.enableVertexAttribArray(uL); gl.vertexAttribPointer(uL,2,gl.FLOAT,false,0,0);
+            gl.drawArrays(gl.TRIANGLES,0,6);
+        }
+        _prog(vs,fs) {
+            const gl=this.gl, v=this._sh(gl.VERTEX_SHADER,vs), f=this._sh(gl.FRAGMENT_SHADER,fs);
+            const p=gl.createProgram(); gl.attachShader(p,v); gl.attachShader(p,f); gl.linkProgram(p);
+            if(!gl.getProgramParameter(p,gl.LINK_STATUS)) console.error('Program link:',gl.getProgramInfoLog(p));
+            return p;
+        }
+        _sh(t,s) { const gl=this.gl,sh=gl.createShader(t); gl.shaderSource(sh,s); gl.compileShader(sh);
+            if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(sh)); return sh; }
+        _tex() { const gl=this.gl,t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR); return t; }
+    }
+
+    // ================================================================
+    // MAIN APP CONTROLLER
+    // ================================================================
+    (async function() {
+        // DOM refs
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('main-canvas');
+        const placeholder = document.getElementById('placeholder');
+        const hint = document.getElementById('hint');
+        const loadScreen = document.getElementById('loading-screen');
+        const loadMsg = document.getElementById('load-msg');
+        const pfill = document.getElementById('pfill');
+        const errBar = document.getElementById('error-bar');
+        const fpsBadge = document.getElementById('fps-badge');
+        const targetBadge = document.getElementById('target-badge');
+        const targetName = document.getElementById('target-name');
+        const targetConf = document.getElementById('target-conf');
+        const pillLive = document.getElementById('pill-live');
+
+        const detector = new YOLODetector();
+        const tracker = new ByteTrack();
+        let renderer = null;
+
+        let running = false, detections = [], tracks = [], targetId = null;
+        let frameCount = 0, fpsCount = 0, fpsTime = performance.now(), currentFps = 0;
+        let blurRadius = 14, detecting = false;
+
+        // Loading step animation
+        function setStep(step) {
+            const steps = ['runtime', 'model', 'ready'];
+            const idx = steps.indexOf(step);
+            steps.forEach((s, i) => {
+                const el = document.getElementById('ls-' + s);
+                el.className = 'lstep' + (i < idx ? ' done' : i === idx ? ' active' : '');
+            });
+            if (step === 'runtime') pfill.style.width = '10%';
+            else if (step === 'model') pfill.style.width = '45%';
+            else if (step === 'ready') pfill.style.width = '100%';
+        }
+
+        // --- Load Model ---
+        try {
+            await detector.load('models/yolov11n.onnx',
+                (msg) => { loadMsg.textContent = msg; },
+                (step) => { setStep(step); }
+            );
+            loadMsg.textContent = 'All systems ready';
+            setTimeout(() => loadScreen.classList.add('hidden'), 600);
+        } catch(e) {
+            loadMsg.textContent = 'Failed: ' + e.message;
+            pfill.style.width = '100%'; pfill.style.background = 'var(--danger)';
+            errBar.style.display = 'block';
+            errBar.innerHTML = '<b>Model Error:</b> ' + e.message + '<br><small>Place <code>yolov11n.onnx</code> in <code>models/</code> folder.</small>';
+            console.error(e);
+            return;
+        }
+
+        // --- UI Bindings ---
+        function startWebcam() {
+            stopCurrent();
+            navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280},height:{ideal:720}},audio:false})
+                .then(stream => {
+                    video.srcObject = stream; video.muted = true;
+                    video.onloadedmetadata = () => { video.play(); startProcessing(); };
+                })
+                .catch(e => { alert('Camera access denied: '+e.message); });
+        }
+
+        document.getElementById('finput').addEventListener('change', e => {
+            const f = e.target.files[0]; if (!f) return;
+            stopCurrent();
+            video.src = URL.createObjectURL(f); video.loop = true; video.muted = true;
+            video.onloadedmetadata = () => { video.play(); startProcessing(); };
+            e.target.value = '';
+        });
+
+        document.getElementById('btn-cam').addEventListener('click', startWebcam);
+        document.getElementById('btn-cam-empty').addEventListener('click', startWebcam);
+
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            targetId = null;
+            document.getElementById('btn-clear').disabled = true;
+            targetBadge.classList.remove('show');
+            updateInfo();
+        });
+
+        document.getElementById('blur-r').addEventListener('input', e => {
+            blurRadius = +e.target.value;
+            document.getElementById('blur-v').textContent = blurRadius;
+            if (renderer) renderer.blur = blurRadius;
+        });
+
+        canvas.addEventListener('click', e => {
+            if (!running || !tracks.length) return;
+            const rect = canvas.getBoundingClientRect();
+            const sx = canvas.width / rect.width, sy = canvas.height / rect.height;
+            const x = (e.clientX - rect.left) * sx, y = (e.clientY - rect.top) * sy;
+            const t = tracker.findAt(x, y);
+            if (t) {
+                targetId = t.id;
+                document.getElementById('btn-clear').disabled = false;
+                hint.classList.remove('show');
+                updateInfo();
+            }
+        });
+
+        // --- Processing ---
+        function stopCurrent() {
+            running = false;
+            if (video.srcObject) { video.srcObject.getTracks().forEach(t=>t.stop()); video.srcObject=null; }
+            video.pause(); tracker.reset(); detections=[]; tracks=[]; targetId=null;
+            document.getElementById('btn-clear').disabled = true;
+            fpsBadge.classList.remove('show');
+            targetBadge.classList.remove('show');
+            pillLive.style.display = 'none';
+            // Reset pipeline indicators
+            document.getElementById('pipe-bt').classList.remove('on');
+            document.getElementById('pipe-gl').classList.remove('on');
+        }
+
+        function startProcessing() {
+            placeholder.classList.add('hidden');
+            hint.classList.add('show');
+            fpsBadge.classList.add('show');
+            pillLive.style.display = '';
+            running = true; frameCount = 0;
+
+            const w = video.videoWidth, h = video.videoHeight;
+            canvas.width = w; canvas.height = h;
+            renderer = new BlurRenderer(canvas);
+            renderer.blur = blurRadius;
+
+            // Light up pipeline
+            document.getElementById('pipe-bt').classList.add('on');
+            document.getElementById('pipe-gl').classList.add('on');
+
+            renderLoop();
+        }
+
+        async function renderLoop() {
+            if (!running) return;
+            const now = performance.now();
+
+            if (video.readyState >= 2) {
+                if (frameCount % 3 === 0 && !detecting) {
+                    detecting = true;
+                    try {
+                        detections = await detector.detect(video);
+                        tracks = tracker.update(detections);
+                        updateInfo();
+                    } catch(e) { console.warn('Detection err:', e); }
+                    detecting = false;
+                }
+
+                const target = targetId ? tracks.find(t=>t.id===targetId) || tracker.tracks.find(t=>t.id===targetId&&t.lost<30) : null;
+
+                if (target && renderer && renderer.gl) {
+                    const w=video.videoWidth, h=video.videoHeight;
+                    const mask = renderer.genMask(target.bbox, w, h);
+                    renderer.render(video, mask, w, h);
+                } else if (renderer && renderer.gl) {
+                    renderer.render(video, null, 0, 0);
+                }
+
+                drawOverlays(target);
+                frameCount++;
+            }
+
+            fpsCount++;
+            if (now - fpsTime >= 1000) {
+                currentFps = fpsCount; fpsCount = 0; fpsTime = now;
+                document.getElementById('st-fps').textContent = currentFps;
+            }
+
+            requestAnimationFrame(renderLoop);
+        }
+
+        function drawOverlays(target) {
+            let oc = document.getElementById('overlay-canvas');
+            if (!oc) {
+                oc = document.createElement('canvas');
+                oc.id = 'overlay-canvas';
+                oc.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;z-index:3;pointer-events:none;';
+                document.getElementById('canvas-wrap').appendChild(oc);
+            }
+            const w=canvas.width, h=canvas.height;
+            if (oc.width!==w||oc.height!==h) { oc.width=w; oc.height=h; }
+            const ox = oc.getContext('2d');
+            ox.clearRect(0,0,w,h);
+
+            for (const t of tracks) {
+                const [bx,by,bw,bh] = t.bbox;
+                const isTgt = target && t.id===target.id;
+
+                if (isTgt) {
+                    // Glowing focus ring
+                    ox.save();
+                    ox.strokeStyle='rgba(124,108,240,0.9)'; ox.lineWidth=2.5;
+                    ox.shadowColor='rgba(124,108,240,0.6)'; ox.shadowBlur=20;
+                    // Rounded rect corners
+                    const pad=6, r=12;
+                    drawRoundRect(ox, bx-pad, by-pad, bw+pad*2, bh+pad*2, r);
+                    ox.stroke();
+                    ox.restore();
+
+                    // Corner accents
+                    ox.save();
+                    ox.strokeStyle='#a89cf8'; ox.lineWidth=3; ox.lineCap='round';
+                    const cl=18;
+                    // Top-left
+                    ox.beginPath(); ox.moveTo(bx-pad,by-pad+cl); ox.lineTo(bx-pad,by-pad+r); ox.arcTo(bx-pad,by-pad,bx-pad+r,by-pad,r); ox.lineTo(bx-pad+cl,by-pad); ox.stroke();
+                    // Top-right
+                    ox.beginPath(); ox.moveTo(bx+bw+pad-cl,by-pad); ox.lineTo(bx+bw+pad-r,by-pad); ox.arcTo(bx+bw+pad,by-pad,bx+bw+pad,by-pad+r,r); ox.lineTo(bx+bw+pad,by-pad+cl); ox.stroke();
+                    // Bottom-left
+                    ox.beginPath(); ox.moveTo(bx-pad,by+bh+pad-cl); ox.lineTo(bx-pad,by+bh+pad-r); ox.arcTo(bx-pad,by+bh+pad,bx-pad+r,by+bh+pad,r); ox.lineTo(bx-pad+cl,by+bh+pad); ox.stroke();
+                    // Bottom-right
+                    ox.beginPath(); ox.moveTo(bx+bw+pad,by+bh+pad-cl); ox.lineTo(bx+bw+pad,by+bh+pad-r); ox.arcTo(bx+bw+pad,by+bh+pad,bx+bw+pad-r,by+bh+pad,r); ox.lineTo(bx+bw+pad-cl,by+bh+pad); ox.stroke();
+                    ox.restore();
+
+                    // Label
+                    drawChipLabel(ox, t.cls.toUpperCase(), t.score, bx-pad, by-pad-28, true);
+                } else {
+                    // Subtle dashed bbox
+                    ox.save();
+                    ox.strokeStyle='rgba(255,255,255,0.18)'; ox.lineWidth=1; ox.setLineDash([5,5]);
+                    drawRoundRect(ox, bx, by, bw, bh, 4);
+                    ox.stroke(); ox.restore();
+                    drawChipLabel(ox, t.cls, t.score, bx, by-22, false);
+                }
+            }
+        }
+
+        function drawRoundRect(ctx, x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x+r, y);
+            ctx.lineTo(x+w-r, y); ctx.arcTo(x+w, y, x+w, y+r, r);
+            ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+            ctx.lineTo(x+r, y+h); ctx.arcTo(x, y+h, x, y+h-r, r);
+            ctx.lineTo(x, y+r); ctx.arcTo(x, y, x+r, y, r);
+            ctx.closePath();
+        }
+
+        function drawChipLabel(cx, text, score, x, y, focused) {
+            const label = text + '  ' + Math.round(score*100) + '%';
+            cx.save();
+            cx.font = (focused?'700':'500')+' 11px Inter,sans-serif';
+            const m=cx.measureText(label), lw=m.width+14, lh=20;
+            cx.globalAlpha = focused ? 0.92 : 0.55;
+            cx.fillStyle = focused ? '#7c6cf0' : '#222230';
+            drawRoundRect(cx, x, y, lw, lh, 6);
+            cx.fill();
+            cx.globalAlpha = 1;
+            cx.fillStyle = '#fff';
+            cx.fillText(label, x+7, y+14);
+            cx.restore();
+        }
+
+        function updateInfo() {
+            const target = targetId ? tracks.find(t=>t.id===targetId) : null;
+            const stEl = document.getElementById('st-text');
+
+            if (target) {
+                stEl.textContent = 'Tracking'; stEl.className = 'metric-value tracking';
+                document.getElementById('st-focus').textContent = target.cls + ' #' + target.id;
+                document.getElementById('st-focus').style.color = 'var(--accent-light)';
+                document.getElementById('st-conf-bar').style.width = Math.round(target.score*100)+'%';
+                document.getElementById('st-conf').textContent = Math.round(target.score*100)+'%';
+                // Target badge on canvas
+                targetBadge.classList.add('show');
+                targetName.textContent = target.cls;
+                targetConf.textContent = Math.round(target.score*100) + '%';
+            } else if (running) {
+                stEl.textContent = 'Detecting'; stEl.className = 'metric-value detecting';
+                document.getElementById('st-focus').textContent = 'None';
+                document.getElementById('st-focus').style.color = 'var(--text-muted)';
+                document.getElementById('st-conf-bar').style.width = '0%';
+                document.getElementById('st-conf').textContent = '0%';
+                targetBadge.classList.remove('show');
+            }
+            document.getElementById('st-count').textContent = tracks.length;
+
+            // Object chips
+            const list = document.getElementById('obj-list');
+            list.innerHTML = '';
+            if (!tracks.length) {
+                list.innerHTML = '<div class="empty-obj">No objects detected yet</div>';
+                return;
+            }
+            for (const t of tracks) {
+                const el = document.createElement('div');
+                el.className = 'obj-chip' + (target && t.id===target.id ? ' active' : '');
+                el.innerHTML = '<span class="obj-dot"></span><span>' + t.cls + '</span><span class="obj-score">' + Math.round(t.score*100) + '%</span>';
+                el.onclick = () => {
+                    targetId = t.id;
+                    document.getElementById('btn-clear').disabled = false;
+                    hint.classList.remove('show');
+                    updateInfo();
+                };
+                list.appendChild(el);
+            }
+        }
+    })();
+    </script>
+</body>
+</html>
